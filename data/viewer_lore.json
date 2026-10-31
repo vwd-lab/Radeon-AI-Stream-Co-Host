@@ -1,0 +1,7 @@
+{
+  "_meta": {
+    "description": "Entity-lore cache for collab partners and recurring chatters. Edit freely; seeds restore only when an entry is absent. Sources: seed | manual | auto.",
+    "lore_cap": 5
+  },
+  "viewers": {}
+}

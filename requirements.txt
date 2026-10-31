@@ -1,0 +1,41 @@
+# Core runtime (Twitch chat + cloud/local brain + Pocket TTS client)
+google-genai>=1.0.0
+httpx>=0.27.0
+python-dotenv==1.0.0
+rich>=13.0.0
+
+# Twitch chat over IRC
+irc==20.3.0
+
+# Microphone input / wake word (Vosk)
+vosk>=0.3.45
+sounddevice>=0.4.6
+soundfile==0.13.1
+numpy>=1.24.0
+keyboard==0.13.5
+# audioop was removed from the stdlib in Python 3.13.
+audioop-lts>=0.2.1; python_version >= "3.13"
+
+# Knowledge base retrieval
+scikit-learn>=1.3.0
+joblib>=1.3.0
+
+# Training: web pages and wiki scraping, HTTP fetches
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+youtube-transcript-api>=0.6.2
+# yt-dlp is used as a command-line binary for VOD audio. The pip package puts
+# a `yt-dlp` executable on PATH, so keep it installed even though no module
+# imports it.
+yt-dlp>=2024.1.1
+# Only needed when a wiki sits behind a Cloudflare challenge. Uses the already
+# installed Edge/Chrome by default; run `python -m playwright install chromium`
+# if you have neither.
+playwright>=1.40
+
+# LCARS dashboard (optional if you never run dashboard.bat)
+PySide6>=6.6.0
+
+# Optional: VOD transcription fallback. Pulls in torch and is a multi-GB
+# install, so it lives in requirements-training.txt.
+# openai-whisper>=20231117

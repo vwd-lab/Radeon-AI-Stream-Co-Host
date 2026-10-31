@@ -1,0 +1,8 @@
+# Optional training extras.
+#
+# Whisper is the fallback transcriber for VODs and local media that have no
+# captions. It pulls in torch, so it is separate from requirements.txt - the
+# bot runs fine without it, it just cannot transcribe audio.
+#
+#   pip install -r requirements-training.txt
+openai-whisper>=20231117

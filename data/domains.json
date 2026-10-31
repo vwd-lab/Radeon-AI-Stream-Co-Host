@@ -1,0 +1,12 @@
+{
+  "example": {
+    "hosts": [
+      "example.com",
+      "en.wikipedia.org"
+    ],
+    "keywords": [
+      "example",
+      "wikipedia"
+    ]
+  }
+}
