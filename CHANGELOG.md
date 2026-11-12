@@ -1,6 +1,6 @@
 # Changelog — Radeon AI Co-Host (share copy)
 
-Canonical working copy at `C:\Users\bbsti\AI Projects\Project AI Logan\sharing\Radeon AI Co-Host`.
+Canonical working copy at `C:\XXXXX\AI Projects\Project AI Logan\sharing\Radeon AI Co-Host`.
 
 This is not a git repository, so versions are tracked here by date instead of commit hash.
 
