@@ -1,12 +1,12 @@
 # Changelog — Radeon AI Co-Host (share copy)
 
-Canonical working copy at `C:\XXXXX\AI Projects\Project AI Logan\sharing\Radeon AI Co-Host`.
+Canonical working copy at `C:\Users\bbsti\AI Projects\Project AI Logan\sharing\Radeon AI Co-Host`.
 
 This is not a git repository, so versions are tracked here by date instead of commit hash.
 
 ## Unreleased
 
-- All updates in this section are based on direct feedback from the sharing files review.
+- All updates in this section are based on direct feedback from the sharing files review (Fixes 01–04).
 - Fixed Kick "simple" mode security (kick_bridge.py): every POST now requires a valid Kick RSA signature (same check as production listener in `input/kick_webhook.py`). Server binds to `127.0.0.1` by default instead of `0.0.0.0`. Rejects bodies over 64 KB (413) and requests without `Content-Length` (411). Only `chat.message.sent` events are handled; other events return 200 "ignored". Message dedupe by `Kick-Event-Message-Id` prevents replay. Public key cached for 1 hour, kept on refresh failure. Message ID comes from signed header (not `data["id"]`). Rejected requests logged sparingly. `kick_bridge.py` now needs `aiohttp` and `rich` (already in `requirements.txt`).
 - `kick_gui.py`: hint text no longer suggests port-forwarding; simple mode description no longer says "no verification".
 - `README.md`: mode table and dependency note updated; `kick_bridge.py` file description updated.

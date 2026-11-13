@@ -12,15 +12,23 @@ load_dotenv()
 # prompt, so changing it here is enough to rename the bot.
 BOT_NAME = os.getenv("BOT_NAME", "Bot Name").strip() or "Bot Name"
 
-# STREAMER_NAME is an *identity matcher*, not a display name. It is compared
-# against incoming chat usernames, which carry no spaces or titles, so it is
-# NOT safe to put a display name with spaces in it. All owner checks go through
-# STREAMER_ALIASES instead.
+# STREAMER_NAME is how the bot refers to the streamer (in prompts and replies).
+# Keep it free of spaces and titles.
+#
+# Who counts as the streamer for owner-only commands is decided by WHERE a
+# message comes from, not by name: the console, the microphone, the dashboard,
+# and on Twitch the owner of TWITCH_CHANNEL (a channel's name is its owner's
+# login). Nothing needs to be listed for that.
+#
+# STREAMER_ALIASES is optional: extra accounts that also get owner commands,
+# such as an alt Twitch login, or a Kick account written as kick:yourkickname.
+# It used to default to "streamer", which gave owner commands to any Twitch
+# account called "streamer"; it now defaults to empty.
 STREAMER_NAME = os.getenv("STREAMER_NAME", "Streamer").strip() or "Streamer"
 STREAMER_TWITCH_NAME = os.getenv("STREAMER_TWITCH_NAME", "streamer").strip().lower()
 STREAMER_ALIASES = {
     n.strip().lower() for n in os.getenv(
-        "STREAMER_ALIASES", "streamer"
+        "STREAMER_ALIASES", ""
     ).split(",") if n.strip()
 }
 
@@ -95,6 +103,17 @@ DISCORD_TEXT_CHANNEL_IDS = [
 # Single voice channel ID the bot auto-joins on startup (optional).
 DISCORD_VOICE_CHANNEL_ID = int(os.getenv("DISCORD_VOICE_CHANNEL_ID", "0") or 0)
 DISCORD_OWNER_NAME = os.getenv("DISCORD_OWNER_NAME", "").strip()
+# Listen for the wake word in the Discord voice channel (needs the Vosk model).
+# Same setting name the Discord kit's own .env uses. main.py reads it, so it
+# must exist here or Discord crashes the bot at startup.
+DISCORD_VC_LISTEN = os.getenv("DISCORD_VC_LISTEN", "0") == "1"
+
+# --- Where the integration folders are ---
+# main.py looks next to this folder for "Discord", "OBS Websocket" and "Kick"
+# (the README names), and also for the names GitHub gives a download or clone
+# (e.g. "Discord-Intergration-for-AI-Stream-Co-Host-main"). If yours live
+# somewhere else, set the full path, e.g. DISCORD_KIT_DIR=D:\Streaming\Discord
+# (read directly by main.py: DISCORD_KIT_DIR, OBS_KIT_DIR, KICK_KIT_DIR).
 
 # --- OBS WebSocket (v5, OBS 28+) ---
 # Enable WebSocket server in OBS: Tools > WebSocket Server Settings.

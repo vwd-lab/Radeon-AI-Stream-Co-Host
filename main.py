@@ -44,12 +44,42 @@ from core.twitch_live import is_enabled as twitch_live_tracking_enabled
 # ---------------------------------------------------------------------------
 # Optional integrations (sibling folders, run as separate processes)
 # ---------------------------------------------------------------------------
-DISCORD_KIT = os.path.abspath(os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "..", "Discord"))
-OBS_KIT = os.path.abspath(os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "..", "OBS Websocket"))
-KICK_KIT = os.path.abspath(os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "..", "Kick"))
+_HERE = os.path.dirname(os.path.abspath(__file__))
+
+
+def _find_kit(env_var, folder_names, marker):
+    """Find a sibling integration folder.
+
+    Checks, in order: <env_var> from .env, then each folder name next to this
+    one - the short name from the README, then the names GitHub gives a
+    downloaded zip ("...-main") or a clone. Returns the first folder that
+    contains <marker>. If none does, returns the first candidate, so error
+    messages still name a sensible path.
+    """
+    override = os.getenv(env_var, "").strip().strip('"')
+    candidates = [override] if override else []
+    candidates += [os.path.join(_HERE, "..", name) for name in folder_names]
+    for folder in candidates:
+        if os.path.isfile(os.path.join(folder, marker)):
+            return os.path.abspath(folder)
+    return os.path.abspath(candidates[0])
+
+
+DISCORD_KIT = _find_kit("DISCORD_KIT_DIR", (
+    "Discord",
+    "Discord-Intergration-for-AI-Stream-Co-Host-main",
+    "Discord-Intergration-for-AI-Stream-Co-Host",
+), os.path.join("input", "discord_bot.py"))
+OBS_KIT = _find_kit("OBS_KIT_DIR", (
+    "OBS Websocket",
+    "OBS-WebSocket-Intergration-for-AI-Stream-Co-Host-main",
+    "OBS-WebSocket-Intergration-for-AI-Stream-Co-Host",
+), os.path.join("input", "obs_overlay.py"))
+KICK_KIT = _find_kit("KICK_KIT_DIR", (
+    "Kick",
+    "Kick-Intergration-for-AI-Stream-Co-Host-main",
+    "Kick-Intergration-for-AI-Stream-Co-Host",
+), "kick_bridge.py")
 
 for _kit in (DISCORD_KIT, OBS_KIT, KICK_KIT):
     if _kit not in sys.path:
@@ -68,26 +98,107 @@ def _load_sibling_module(module_name, file_path):
     This avoids clobbering Co-Host's own ``input`` package (both the Discord
     and OBS kits ship their own ``input/`` package). Each module is registered
     under a unique name so it never collides with Co-Host's modules.
+
+    Any failure - missing folder, missing package, an error inside the kit -
+    is raised as ImportError with a readable message, so the caller can turn
+    the integration off and keep the bot running.
     """
+    if not os.path.isfile(file_path):
+        raise ImportError(f"{file_path} not found. Put the integration folder next to "
+                          f"this one, or set its *_KIT_DIR path in .env.")
     spec = importlib.util.spec_from_file_location(module_name, file_path)
     if spec is None or spec.loader is None:
-        return None
+        raise ImportError(f"cannot load {file_path}")
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    try:
+        spec.loader.exec_module(module)
+    except ImportError:
+        raise
+    except Exception as e:
+        raise ImportError(f"{os.path.basename(file_path)} failed to load: "
+                          f"{type(e).__name__}: {e}") from e
     return module
+
+
+class _TrustedOwner(str):
+    """The streamer, recognised by WHERE a message came from, not by a name.
+
+    Console, microphone and dashboard input come from the streamer's own PC,
+    and a Twitch message from the channel owner's login is the streamer too.
+    Those code paths pass OWNER as the username.
+
+    It is a str (it reads as config.STREAMER_NAME), so it works anywhere a
+    username does: printing, memory keys, prompts. Chat text can never create
+    one - only this module does - and any string operation (.lower(), .strip(),
+    f-strings, "kick:" + ...) returns a plain str, so the trust cannot leak
+    onto another name.
+    """
+    __slots__ = ()
+
+
+OWNER = _TrustedOwner(config.STREAMER_NAME)
+
+
+def _twitch_owner_logins():
+    """Twitch logins that belong to the streamer.
+
+    The channel the bot joins (on Twitch a channel's name IS its owner's
+    login), plus STREAMER_TWITCH_NAME when it has been set to a real login
+    rather than left at the "streamer" placeholder default.
+    """
+    logins = set()
+    channel = (getattr(config, "TWITCH_CHANNEL", "") or "").strip().lstrip("#").lower()
+    if channel:
+        logins.add(channel)
+    twitch_name = (getattr(config, "STREAMER_TWITCH_NAME", "") or "").strip().lower()
+    if twitch_name and twitch_name != "streamer":
+        logins.add(twitch_name)
+    return logins
 
 
 def _is_streamer(username):
     """True when this chatter is the streamer (streamer-only commands).
 
-    Matches any spelling in config.STREAMER_ALIASES rather than comparing
-    against config.STREAMER_NAME directly. Chat usernames arrive as bare
-    logins like "yourchannelname", so an equality test against a spaced display
-    name silently fails and quietly disables every owner-gated command.
+    1. OWNER (console, mic, dashboard, the channel owner on Twitch) always is.
+    2. Otherwise the name must be listed in STREAMER_ALIASES - optional, for
+       extra accounts such as an alt Twitch login or kick:yourkickname.
     """
+    if isinstance(username, _TrustedOwner):
+        return True
     if not username:
         return False
     return username.strip().lower() in config.STREAMER_ALIASES
+
+
+def _warn_risky_aliases():
+    """Point out alias entries that were only ever a workaround.
+
+    In 1.0 the streamer's own commands only worked if STREAMER_NAME (or
+    the "streamer" placeholder) was listed in STREAMER_ALIASES. That made any
+    Twitch or Kick account with that login an owner too. It's no longer
+    needed, so say so at startup.
+    """
+    risky = ({config.STREAMER_NAME.strip().lower(), "streamer"}
+             & set(config.STREAMER_ALIASES)) - _twitch_owner_logins()
+    for name in sorted(risky):
+        print(f"[yellow]STREAMER_ALIASES contains '{name}'. That's no longer needed for your "
+              f"own commands, and any Twitch account named '{name}' gets owner commands "
+              f"while it's listed. Remove it from .env unless that is your own login.")
+
+
+def _kick_user(name):
+    """Namespace a Kick username as "kick:<name>".
+
+    Kick and Twitch are separate name spaces: anyone can register a Kick
+    account with the same name as the streamer's Twitch login. Every check
+    and memory lookup for a Kick message must use the prefixed form, so a
+    Kick name can only match a STREAMER_ALIASES entry written as
+    "kick:<name>" on purpose.
+    """
+    name = (name or "").strip() or "KickViewer"
+    if name.lower().startswith("kick:"):
+        name = name[5:].strip() or "KickViewer"
+    return f"kick:{name}"
 
 
 # Owner-only commands that mutate the knowledge base or global state. These
@@ -963,6 +1074,7 @@ def _write_bot_pid():
 
 def main():
     print(f"[green]Initializing {config.BOT_NAME} AI Voice Assistant...")
+    _warn_risky_aliases()
     _write_bot_pid()
     cleanup_stale_tts_files()
     _print_review_alerts()
@@ -1069,18 +1181,16 @@ def main():
     discord_bridge = None
     discord_message_queue = queue.Queue()
     if config.DISCORD_BOT_TOKEN and config.DISCORD_TEXT_CHANNEL_IDS:
+        # Optional integration: any failure here turns Discord off and the bot
+        # keeps running, instead of crashing before it ever reaches chat.
         try:
             discord_mod = _load_sibling_module(
                 "kick_discord_bridge",
                 os.path.join(DISCORD_KIT, "input", "discord_bot.py"),
             )
-            DiscordBridge = getattr(discord_mod, "DiscordBridge", None) if discord_mod else None
+            DiscordBridge = getattr(discord_mod, "DiscordBridge", None)
             if DiscordBridge is None:
                 raise ImportError("DiscordBridge class not found")
-        except ImportError as e:
-            print(f"[yellow]Discord bridge unavailable: {e}")
-            discord_bridge = None
-        else:
 
             def _discord_on_text(display, formatted, channel_id=None):
                 """Called by DiscordBridge on the gateway thread. Enqueue so the
@@ -1089,6 +1199,7 @@ def main():
                 username = f"discord:{display.lower()}"
                 discord_message_queue.put(("chat", raw, username, channel_id))
 
+            vc_listen = getattr(config, "DISCORD_VC_LISTEN", False)
             discord_bridge = DiscordBridge(
                 token=config.DISCORD_BOT_TOKEN,
                 allowed_channel_ids=config.DISCORD_TEXT_CHANNEL_IDS,
@@ -1097,32 +1208,35 @@ def main():
                 owner_name=config.DISCORD_OWNER_NAME,
                 ignored_users=config.IGNORED_USERS,
                 on_text=_discord_on_text,
-                vc_listen=config.DISCORD_VC_LISTEN if hasattr(config, "DISCORD_VC_LISTEN") else False,
-                voice_model=mic_input.model if (config.DISCORD_VC_LISTEN and mic_input) else None,
+                vc_listen=vc_listen,
+                voice_model=mic_input.model if (vc_listen and mic_input) else None,
                 vc_wake_words=config.WAKE_WORDS,
                 vc_active_window=config.WAKE_ACTIVE_WINDOW,
                 vc_wake_arm=config.WAKE_PARTIAL_ARM,
             )
             discord_bridge.start()
             print(f"[green]Discord bridge online ({len(config.DISCORD_TEXT_CHANNEL_IDS)} channel(s))")
+        except Exception as e:
+            # Backslash any "[" so rich doesn't read the error text as markup.
+            reason = str(e).replace("[", r"\[")
+            print(f"[yellow]Discord bridge unavailable, continuing without it: {reason}")
+            discord_bridge = None
     else:
         print("[yellow]No DISCORD_BOT_TOKEN / DISCORD_TEXT_CHANNEL_IDS. Discord integration disabled.")
 
     # --- Optional: OBS WebSocket overlay (sharing\OBS Websocket) ---
     obs_overlay = None
     if config.OBS_ENABLED:
+        # Optional integration: any failure turns the overlay off and the bot
+        # keeps running.
         try:
             obs_mod = _load_sibling_module(
                 "kick_obs_overlay",
                 os.path.join(OBS_KIT, "input", "obs_overlay.py"),
             )
-            ObsStaticOverlay = getattr(obs_mod, "ObsStaticOverlay", None) if obs_mod else None
+            ObsStaticOverlay = getattr(obs_mod, "ObsStaticOverlay", None)
             if ObsStaticOverlay is None:
                 raise ImportError("ObsStaticOverlay class not found")
-        except ImportError as e:
-            print(f"[yellow]OBS overlay unavailable: {e}")
-            obs_overlay = None
-        else:
             obs_overlay = ObsStaticOverlay(
                 host=config.OBS_HOST,
                 port=config.OBS_PORT,
@@ -1137,6 +1251,10 @@ def main():
                 print("[yellow]OBS not reachable at startup; overlay will retry on next speech.")
             else:
                 print(f"[green]OBS overlay online (scene '{config.OBS_SCENE}', source '{config.OBS_SOURCE}')")
+        except Exception as e:
+            reason = str(e).replace("[", r"\[")
+            print(f"[yellow]OBS overlay unavailable, continuing without it: {reason}")
+            obs_overlay = None
 
     # --- Kick mailbox path (shared with sharing\Kick bridge) ---
     kick_mailbox = config.KICK_MAILBOX_PATH
@@ -1522,14 +1640,15 @@ def main():
                                       ai_engine=ai_engine)
 
     def drain_self_input(q, source, display, origin):
+        # Console and microphone are on the streamer's own PC: always OWNER.
         for text in drain(q):
-            if dispatch(text, config.STREAMER_NAME, origin):
+            if dispatch(text, OWNER, origin):
                 continue
-            spoken = special(text, config.STREAMER_NAME)
+            spoken = special(text, OWNER)
             if spoken is False:
                 process_message(
                     f"[{config.STREAMER_NAME} via {display}]: {text}", source=source,
-                    username=config.STREAMER_NAME,
+                    username=OWNER,
                     chatter_memory=chatter_memory, knowledge_base=knowledge_base,
                     conversation=conversation, ai_engine=ai_engine,
                     tts=tts, audio_manager=audio_manager, stream_tool=stream_tool,
@@ -1543,9 +1662,9 @@ def main():
         # ---- Dashboard buttons (partly-interactive GUI) ----
         for db_cmd in _drain_dashboard_cmds():
             print(f"[cyan]Dashboard command: {db_cmd}")
-            if dispatch(db_cmd, config.STREAMER_NAME, "dashboard"):
+            if dispatch(db_cmd, OWNER, "dashboard"):
                 continue
-            spoken = special(db_cmd, config.STREAMER_NAME)
+            spoken = special(db_cmd, OWNER)
             if isinstance(spoken, str) and spoken:
                 speak_line(spoken, tts, audio_manager)
 
@@ -1571,11 +1690,13 @@ def main():
                                 memory_db=memory_db, tts=tts, audio_manager=audio_manager)
                     continue
                 if msg_type == "chat":
-                    bare = username
-                    streamer_names = {config.STREAMER_TWITCH_NAME.lower()}
-                    if bare.strip().lower() in streamer_names and f"'{username}'" in msg_text:
-                        msg_text = msg_text.replace(f"'{username}'", f"'{config.STREAMER_NAME}'", 1)
-                        username = config.STREAMER_NAME
+                    # The channel owner's login (the IRC nick, which Twitch
+                    # guarantees) is the streamer: show them by STREAMER_NAME
+                    # and treat them as OWNER. No STREAMER_ALIASES entry needed.
+                    if username.strip().lower() in _twitch_owner_logins():
+                        if f"'{username}'" in msg_text:
+                            msg_text = msg_text.replace(f"'{username}'", f"'{config.STREAMER_NAME}'", 1)
+                        username = OWNER
 
                     cmd_text = msg_text
                     if cmd_text.startswith("[Twitch viewer '"):
@@ -1663,7 +1784,10 @@ def main():
             for item in kick_inbox:
                 msg_type = item.get("type", "chat")
                 msg_text = item.get("message", "")
-                username = item.get("username", "KickViewer")
+                # Always "kick:<name>": a bare Kick name could match the
+                # streamer's Twitch login in STREAMER_ALIASES (owner commands)
+                # or a Twitch viewer's memories (!remember/!forget/!memory).
+                username = _kick_user(item.get("username"))
                 msg_id = item.get("id", "")
                 if not msg_text:
                     continue
@@ -1677,7 +1801,7 @@ def main():
                     if _is_streamer(username):
                         print(f"[magenta]{config.STREAMER_NAME} Kick request — responding immediately...")
                         process_message(
-                            msg_text, source="kick", username=f"kick:{username}",
+                            msg_text, source="kick", username=username,
                             chatter_memory=chatter_memory, knowledge_base=knowledge_base,
                             conversation=conversation, ai_engine=ai_engine,
                             tts=tts, audio_manager=audio_manager, stream_tool=stream_tool,
@@ -1687,7 +1811,7 @@ def main():
                         )
                     else:
                         process_message(
-                            msg_text, source="kick", username=f"kick:{username}",
+                            msg_text, source="kick", username=username,
                             chatter_memory=chatter_memory, knowledge_base=knowledge_base,
                             conversation=conversation, ai_engine=ai_engine,
                             tts=tts, audio_manager=audio_manager, stream_tool=stream_tool,
@@ -1773,7 +1897,7 @@ def main():
             if mic_result:
                 process_message(
                     f"[{config.STREAMER_NAME} via microphone]: {mic_result}", source="mic",
-                    username=config.STREAMER_NAME,
+                    username=OWNER,
                     chatter_memory=chatter_memory, knowledge_base=knowledge_base,
                     conversation=conversation, ai_engine=ai_engine,
                     tts=tts, audio_manager=audio_manager, stream_tool=stream_tool,

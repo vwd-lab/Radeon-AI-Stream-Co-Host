@@ -21,8 +21,8 @@ DEFAULT_ENV_PATH = os.path.join(ROOT, ".env.example")
 # Each entry: (env key, label, hint, quote value)
 FIELDS = [
     ("BOT_NAME", "Bot name", 'What the co-host calls itself (spoken + chat prefix)', True),
-    ("STREAMER_NAME", "Streamer name", 'Identity matcher vs chat usernames (no spaces, no titles)', True),
-    ("STREAMER_ALIASES", "Streamer aliases", 'Comma-separated logins owner checks match against', False),
+    ("STREAMER_NAME", "Streamer name", 'How the bot refers to you (no spaces, no titles)', True),
+    ("STREAMER_ALIASES", "Extra owner accounts", 'Optional. Other logins that get owner commands, e.g. an alt or kick:yourkickname', False),
     ("STREAMER_TWITCH_NAME", "Twitch login", "Your Twitch account login (no @, no spaces)", True),
     ("TWITCH_BOT_NICK", "Bot Twitch nick", "Login of the bot account (the OAuth token owner)", True),
     ("TWITCH_CHANNEL", "Twitch channel", "Channel to join, without the leading #", True),

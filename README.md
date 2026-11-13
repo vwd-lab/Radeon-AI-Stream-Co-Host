@@ -106,11 +106,23 @@ OLLAMA_MODEL=gemma3:4b
 Pull the model first: `ollama pull gemma3:4b`. Any model you have installed
 works; the tag just has to match `OLLAMA_MODEL`.
 
-Owner-gated commands compare against `STREAMER_ALIASES`, not the display name:
+**Owner commands** (`!train`, `!voice`, `!mute`, `!freq`, dashboard buttons…)
+work automatically for you from the console, the microphone, the dashboard,
+and your Twitch account. Your Twitch account is recognised because it owns
+`TWITCH_CHANNEL`. You don't need to list yourself anywhere.
+
+`STREAMER_ALIASES` is optional, for *extra* accounts that should also get owner
+commands. Kick names are checked as `kick:<name>`, so a Kick account that
+happens to share your Twitch login does **not** get owner commands; add your
+own Kick account with the prefix:
 
 ```ini
-STREAMER_ALIASES=yourchannel,yourdisplayname
+STREAMER_ALIASES=youralttwitchlogin,kick:yourkickname
 ```
+
+Don't put `STREAMER_NAME` or `streamer` in it unless that is a login you own:
+anyone with that login would get owner commands. The bot warns at startup if
+it sees one.
 
 ### 3. Add a Vosk model (microphone only)
 
@@ -233,6 +245,22 @@ Each sibling folder has its own `setup_*_gui.bat` (interactive setup) and
 `start_*_gui.bat` (launcher). See that folder's `README.md` for the full setup
 sequence (bot token, tunnel URL, OBS WebSocket credentials, etc.).
 
+**Folder names.** The bot looks next to its own folder for `Discord`,
+`OBS Websocket` and `Kick`, and also for the names GitHub gives them when you
+download or clone (for example `Discord-Intergration-for-AI-Stream-Co-Host-main`),
+so you don't need to rename anything. If a folder lives somewhere else, put its
+full path in `.env`:
+
+```ini
+DISCORD_KIT_DIR=D:\Streaming\Discord
+OBS_KIT_DIR=D:\Streaming\OBS Websocket
+KICK_KIT_DIR=D:\Streaming\Kick
+```
+
+If an integration can't be loaded (folder missing, a package not installed),
+the bot prints a yellow "unavailable, continuing without it" line with the
+reason and carries on without it.
+
 The LCARS dashboard (`dashboard.bat`) shows live **ONLINE / OFFLINE** pills for
 Kick, Discord, and OBS, reflecting status from the status feed.
 
@@ -262,8 +290,9 @@ The token starts with `oauth:` and belongs to the bot account. Check the
 console for the exact rejection message.
 
 **Commands do nothing for the streamer.**
-Owner checks use `STREAMER_ALIASES`, which defaults to `streamer`. Add your
-actual Twitch login.
+From Twitch, check that `TWITCH_CHANNEL` is your own channel (without the `#`):
+its owner is the streamer. From the console, microphone and dashboard, owner
+commands always work. From Kick, add `kick:yourkickname` to `STREAMER_ALIASES`.
 
 **The bot exits immediately saying no brain is configured.**
 Set `GEMINI_API_KEY`, or set `LOCAL_LLM_ENABLED=1` and make sure Ollama is
